@@ -3,8 +3,10 @@
     台大ML作业3的Q13-Q20,自己实现简单的决策树
     C&RT alogrithm and Gini index
 '''
+import copy
 
 all_nodes = [] #记录所有的node，根据index来保存树结构
+recursive_depth = 0
 INF = 10000
 LEFT_LABEL = -1
 RIGHT_LABEL = 1
@@ -29,6 +31,7 @@ class Node(object):
         self.parent = parent
         self.f_i = -1
         self.theta = -1
+        self.label= 0
 
 def load_data():
     '''
@@ -48,7 +51,7 @@ def generate_thetas(feature_index, train_data):
          先得按照对应维度的值进行升序排列
     '''
     theta_values = [-INF]
-    sorted(train_data, key=lambda d:d[feature_index], reverse=False)
+    train_data = sorted(train_data, key=lambda d:d[feature_index], reverse=False)
     for i in range(len(train_data) - 1):
         theta_values.append((train_data[i][feature_index] + train_data[i+1][feature_index]) * 0.5)
     theta_values.append(INF)
@@ -60,43 +63,41 @@ def sign(x):
 def impurity(data):
     '''
         计算impurity，使用Gini index
-        data为dict类型，key=label, value=records
+        data为list
         使用公式impurity = 1 - sum_k{(1-sum_N[[y==k]] / N)}^2
     '''
-    t = 0.00
-    N = len(data.get(LEFT_LABEL, []) + data.get(RIGHT_LABEL, []))
-    for label, records in data.items():
-        correct_num = 0
-        for _, _, y in records:
-            correct_num += int(label == y)
-        t += pow(correct_num * 1.0 / N, 2)
-    return 1.0 - t
+    if not data:
+        return 0.0
+    N = len(data)
+    pos, neg = 0, 0
+    #print '-------------', data
+    for _, _, y in data:
+        if y == 1:
+            pos += 1
+        else:
+            neg += 1
+    return 1.0 - (pos**2 + neg**2) * 1.0 / N**2
 
 def get_opt_parameters(train_data):
     '''
         train_data格式: (feature1, feature2, label)
-        使用f = sign(x_i - theta)来找到最好的参数组合
-        做每个特征的时候,将train_data按照对应的 特征进行排序，得到N个value，然后取每段区间的中点作为theta，再加上
-        -inf, inf，一共N+1个值
-        然后在特征和N+1个值里进行遍历，找到impurity最小的参数组合
-        返回参数组合已经切分的数据, -1为左孩子, +1为右孩子
+        寻找使得err最小的划分参数组合,theta, f_i
+        min_err = size(D1) * impurity(D1) + size(D2) * impurity(D2)
+        使用一个trick的方法: 将数据按照对应的维度排序，然后从左往右切分，找出最好的impurity，而不用一个theta遍历所有的数据
     '''
-    splited_data = {}#key in (-1, 1), values = []
-    min_impurity, opt_f_i, opt_theta = 10.0, 0, -INF
+    min_err, opt_f_i, opt_theta = INF, 0, -INF
+    N = len(train_data)
     for f_i in range(2):
-        theta_values = generate_thetas(f_i, train_data)
-        for theta in theta_values:
-            splited_data = {}
-            for row in train_data:
-                y = sign(row[f_i] - theta)
-                splited_data.setdefault(y, []).append(row)
-            tmp_impurity = impurity(splited_data)
+        train_data = sorted(train_data, key=lambda d:d[f_i], reverse=False)
+        #import pdb;pdb.set_trace()
+        for ind in range(N):
+            err = ind * impurity(train_data[:ind]) + (N - ind) + impurity(train_data[ind:])
 
-            if tmp_impurity < min_impurity:
-                min_impurity = tmp_impurity
-                opt_theta = theta
+            if min_err > err:
+                min_err = err
                 opt_f_i = f_i
-    return opt_f_i, opt_theta, splited_data
+                opt_theta = -INF if ind == 0 else (train_data[ind - 1][f_i] + train_data[ind][f_i]) * 0.5
+    return opt_f_i, opt_theta
 
 def create_children(node):
     '''
@@ -113,37 +114,61 @@ def create_children(node):
 
     all_nodes.append(lchild)
     all_nodes.append(rchild)
-    print 'create children(l=%d,r=%d) for node %d' % (pos, pos+1, node.index)
+    #print 'create children(l=%d,r=%d) for node %d' % (pos, pos+1, node.index)
     return lchild, rchild
 
-def decision_tree(node, train_data, label=1):
+def decision_tree(node, train_data):
     '''
         递归调用，根据train_data的impurity判断是否需要terminate;
         如果没有terminate，则选择最好的feature_i，和theta，将数据进行划分；
         -1往左走，+1往右走，创建两个新node，继续重复上述过程直到terminate
     '''
-    global all_nodes
-    if impurity(dict({label: train_data})) == 0:
-        all_nodes.append(node)
-        return
 
-    theta, f_i, splited_data = get_opt_parameters(train_data)
+    majority_of_y = lambda d: sign(sum(d))#由大多数y来决定最后的label
+
+    global all_nodes, recursive_depth
+    recursive_depth += 1
+    print 'recursive_depth=%d, impurity=%.3f, current_data_num=%d' %(recursive_depth, impurity(train_data), len(train_data))
+    if not train_data:
+        return
+    if impurity(train_data) == 0.0:
+        #all_nodes.append(node)
+        #说明是叶子节点，需要生成gt(x)
+        node.label = majority_of_y([y for _, _, y in train_data])
+        return node
+
+    #import pdb;pdb.set_trace()
+    f_i, theta = get_opt_parameters(train_data)
     node.theta = theta
     node.feature_i = f_i
 
-    lchid, rchild = create_children(node)
+    lchild, rchild = create_children(node)
 
-    decision_tree(lchid, splited_data[LEFT_LABEL], LEFT_LABEL)
+    #import pdb;pdb.set_trace()
+    left_part = [t for t in train_data if t[f_i] < theta]
+    right_part = [t for t in train_data if t[f_i] >= theta]
 
-    decision_tree(rchid, splited_data[RIGHT_LABEL], RIGHT_LABEL)
+    decision_tree(lchild, left_part)
+
+    decision_tree(rchild, right_part)
+    return node
 
 def main():
     train_data, test_data = load_data()
     root = Node(0)
     global all_nodes
     all_nodes.append(root)
+    print 'start train decision tree, %d train data...' % len(train_data)
     decision_tree(root, train_data)
+    for r in all_nodes:
+        print 'index=%d(l=%d,r=%d,p=%d), para(theta=%.4f,f_i=%d), label=%d' % (r.index, r.lchild, r.rchild, r.parent, r.theta, r.f_i, r.label)
     print 'finished, there is %d nodes in the tree' % (len(all_nodes))
+    print '----------------------------------------'
+    print '         Homework 3 Question 13         '
+    print '----------------------------------------'
+    print 'How many internal nodes:'
+    print len([r for r in all_nodes if r.label == 0])
+
 
 if __name__ == '__main__':
     main()
