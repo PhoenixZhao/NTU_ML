@@ -74,6 +74,18 @@ def train_with_sgd():
     return W
 
 if __name__ == '__main__':
+    '''
+        可以将求梯度的过程转换为矩阵运算，这样利用numpy就非常容易实现
+        X: N*(d+1)矩阵
+        wt: 列向量， (d+1) * 1,将w0放到w中
+        Y: 列向量，N * 1
+        Y*: 对角矩阵，-y1, -y2, ..., -yn
+        then:
+            gradient = 1/N logit(wt.T * X.T * Y_star) * Y_star * X
+            最终是一个1*(d+1)的向量
+        大量使用numpy提供的api，极大简化计算过程
+        vectorize, dot, loadtxt, reshape, shape, 使用sum求解两个矩阵相同元素的个数
+    '''
     W = train_with_sgd()
     #test
     X, Y = load_data(test_data_file)
