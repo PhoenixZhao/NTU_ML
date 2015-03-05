@@ -10,7 +10,7 @@ import math
 train_data_file = '../../../台大ML01/assignments/03/hw3_train.dat'
 test_data_file = '../../../台大ML01/assignments/03/hw3_test.dat'
 
-eita = 0.01
+eita = 0.001
 T = 2000
 
 
@@ -39,10 +39,7 @@ def logit(x):
 def sign(x):
     return 1 if x>= 0 else -1
 
-def train():
-    pass
-
-if __name__ == '__main__':
+def train_with_gd():
     X, Y = load_data(train_data_file)
     N, dn = X.shape
     W = np.zeros((dn, 1))
@@ -57,11 +54,31 @@ if __name__ == '__main__':
         Theta_Matrix = f(Theta_Matrix)
         gradient = 1.0 / N * np.dot(np.dot(Theta_Matrix, Y_star), X)
         W = W - (eita * gradient).T
+    return W
 
+def train_with_sgd():
+    X, Y = load_data(train_data_file)
+    N, dn = X.shape
+    W = np.zeros((dn, 1))
+    Y_star = -1 * Y
+    #stochastic gradient descent for training
+    rn = np.random.randint(N, size=T)
+    for t in range(T):
+        if t % 100 == 0:
+            print 'round ', t + 1
+        xn = X[rn[t],:].reshape(1, dn)
+        theta = logit(np.dot(xn, W)[0,0])
+        #将Theta矩阵中每个元素进行logit运算
+        gradient =  Y_star[rn[t]] * theta * xn
+        W = W - (eita * gradient).T
+    return W
+
+if __name__ == '__main__':
+    W = train_with_sgd()
     #test
     X, Y = load_data(test_data_file)
     N, dn = X.shape
-    pred_Y = np.dot(X, W)
+    pred_Y = np.dot(X, W)#得到列向量
     f = np.vectorize(sign)
     pred_Y = f(pred_Y)
     #print X.shape
