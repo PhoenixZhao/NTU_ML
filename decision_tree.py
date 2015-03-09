@@ -15,6 +15,9 @@ RIGHT_LABEL = 1
 train_data_file = '../assignment3/hw3_train.dat'
 test_data_file = '../assignment3/hw3_test.dat'
 
+
+DEBUG = False
+
 class Node(object):
     '''
         决策树的每一个node，每个节点的attribute如下
@@ -39,6 +42,7 @@ def load_data():
             feature1    feature2  label
     '''
     lines = open(train_data_file, 'r').readlines()
+    lines = lines[:5] if DEBUG else lines
     train_data = [(float(f1), float(f2), int(label)) for f1, f2, label in [l.strip().split() for l in lines]]
     lines = open(test_data_file, 'r').readlines()
     test_data = [(float(f1), float(f2), int(label)) for f1, f2, label in [l.strip().split() for l in lines]]
@@ -70,7 +74,7 @@ def impurity(data):
         return 0.0
     N = len(data)
     pos, neg = 0, 0
-    #print '-------------', data
+
     for _, _, y in data:
         if y == 1:
             pos += 1
@@ -89,9 +93,8 @@ def get_opt_parameters(train_data):
     N = len(train_data)
     for f_i in range(2):
         train_data = sorted(train_data, key=lambda d:d[f_i], reverse=False)
-        #import pdb;pdb.set_trace()
         for ind in range(N):
-            err = ind * impurity(train_data[:ind]) + (N - ind) + impurity(train_data[ind:])
+            err = ind * impurity(train_data[:ind]) + (N - ind) * impurity(train_data[ind:])
 
             if min_err > err:
                 min_err = err
@@ -128,7 +131,7 @@ def decision_tree(node, train_data):
 
     global all_nodes, recursive_depth
     recursive_depth += 1
-    print 'recursive_depth=%d, impurity=%.3f, current_data_num=%d' %(recursive_depth, impurity(train_data), len(train_data))
+    print 'recursive_depth=%d, node_num=%d, impurity=%.3f, current_data_num=%d' %(recursive_depth, node.index, impurity(train_data), len(train_data))
     if not train_data:
         return
     if impurity(train_data) == 0.0:
@@ -140,7 +143,7 @@ def decision_tree(node, train_data):
     #import pdb;pdb.set_trace()
     f_i, theta = get_opt_parameters(train_data)
     node.theta = theta
-    node.feature_i = f_i
+    node.f_i = f_i
 
     lchild, rchild = create_children(node)
 
@@ -151,14 +154,31 @@ def decision_tree(node, train_data):
     decision_tree(lchild, left_part)
 
     decision_tree(rchild, right_part)
+
     return node
+
+
+def predict(node, x):
+    '''
+        predict with decision tree recursively
+    '''
+    if node.label:#1 or -1
+        return node.label
+    else:
+        if x[node.f_i] < node.theta:
+            lchild = all_nodes[node.lchild]
+            return predict(lchild, x)
+        else:
+            rchild = all_nodes[node.rchild]
+            return predict(rchild, x)
+
 
 def main():
     train_data, test_data = load_data()
     root = Node(0)
     global all_nodes
     all_nodes.append(root)
-    print 'start train decision tree, %d train data...' % len(train_data)
+    print 'start build decision tree, %d train data...' % len(train_data)
     decision_tree(root, train_data)
     for r in all_nodes:
         print 'index=%d(l=%d,r=%d,p=%d), para(theta=%.4f,f_i=%d), label=%d' % (r.index, r.lchild, r.rchild, r.parent, r.theta, r.f_i, r.label)
@@ -168,7 +188,30 @@ def main():
     print '----------------------------------------'
     print 'How many internal nodes:'
     print len([r for r in all_nodes if r.label == 0])
+    print '----------------------------------------'
 
+    print '----------------------------------------'
+    print '         Homework 3 Question 14         '
+    print '----------------------------------------'
+    print 'Ein (evaluated with 0/1 error):'
+    #其实从训练过程中就可以看出，ein就应该为0
+    predict_Y = [predict(root, r) for r in train_data]
+    N = len(predict_Y)
+    ein = sum([predict_Y[i] != train_data[i][2] for i in range(N)]) * 1.0 / N
+    print ein
+    print '----------------------------------------'
+
+
+    print '----------------------------------------'
+    print '         Homework 3 Question 15         '
+    print '----------------------------------------'
+    print 'Eout (evaluated with 0/1 error):'
+    #其实从训练过程中就可以看出，ein就应该为0
+    predict_Y = [predict(root, r) for r in test_data]
+    N = len(predict_Y)
+    eout = sum([predict_Y[i] != test_data[i][2] for i in range(N)]) * 1.0 / N
+    print eout
+    print '----------------------------------------'
 
 if __name__ == '__main__':
     main()
