@@ -4,6 +4,8 @@
     C&RT alogrithm and Gini index
 '''
 import copy
+import random
+import time
 
 all_nodes = [] #记录所有的node，根据index来保存树结构
 recursive_depth = 0
@@ -120,6 +122,13 @@ def create_children(node):
     #print 'create children(l=%d,r=%d) for node %d' % (pos, pos+1, node.index)
     return lchild, rchild
 
+def is_same_points(data):
+    '''
+        判断data中的xn是不是全部一样
+    '''
+    X = [(x1, x2) for x1, x2, _ in data]
+    return True if len(set(X)) == 1 else False
+
 def decision_tree(node, train_data):
     '''
         递归调用，根据train_data的impurity判断是否需要terminate;
@@ -131,7 +140,7 @@ def decision_tree(node, train_data):
 
     global all_nodes, recursive_depth
     recursive_depth += 1
-    print 'recursive_depth=%d, node_num=%d, impurity=%.3f, current_data_num=%d' %(recursive_depth, node.index, impurity(train_data), len(train_data))
+    #print 'recursive_depth=%d, node_num=%d, impurity=%.3f, current_data_num=%d' %(recursive_depth, node.index, impurity(train_data), len(train_data))
     if not train_data:
         return
     if impurity(train_data) == 0.0:
@@ -139,6 +148,11 @@ def decision_tree(node, train_data):
         #说明是叶子节点，需要生成gt(x)
         node.label = majority_of_y([y for _, _, y in train_data])
         return node
+    if is_same_points(train_data):
+        #数据是一样的，主要是在bootstrapping中会出现
+        node.label = majority_of_y([y for _, _, y in train_data])
+        return node
+
 
     #import pdb;pdb.set_trace()
     f_i, theta = get_opt_parameters(train_data)
@@ -157,7 +171,6 @@ def decision_tree(node, train_data):
 
     return node
 
-
 def predict(node, x):
     '''
         predict with decision tree recursively
@@ -172,6 +185,95 @@ def predict(node, x):
             rchild = all_nodes[node.rchild]
             return predict(rchild, x)
 
+def predict_with_rf(forest, x):
+    '''
+        uniform bagging with random forest
+    '''
+    predict_Y = [predict(root, x) for root in forest]
+    return sign(sum(predict_Y))
+
+
+def bootstrapping(train_data):
+    '''
+        使用bootstrapping的方法重新resample data
+        N' = N
+    '''
+    N = len(train_data)
+    indexes = [random.randint(0, N-1) for r in range(N)]
+    return [train_data[r] for r in indexes]
+
+def random_forest(tnum, train_data):
+    '''
+        bagging with bootstraping: N' = N
+        T: 300
+        REPEAT: 100
+        total: 30000 trees
+        tnum: number of trees in the forest, defined manually
+    '''
+    cur_pos = len(all_nodes)
+    forest = [Node(r) for r in range(cur_pos, cur_pos+tnum)]#all root nodes of trees
+    for root in forest:
+        bst_data = bootstrapping(train_data)
+        decision_tree(root, bst_data)
+    return forest
+
+def run_rs(train_data, test_data):
+    '''
+        for q16-q18
+    '''
+    T = 100
+    tnum = 300
+    random_forests= []
+    start_time = time.time()
+    for t in range(T):
+        rstart_time = time.time()
+        random_forests.append(random_forest(tnum, train_data))
+        if (t+1) % 10 == 0:
+            print '%d round, cost %.fs' % (t+1, (time.time() - rstart_time))
+    print 'finish generating %d trees, total nodes=%d, cost %.fmin' % (T*tnum, len(all_nodes), (time.time() - start_time) / 60.0)
+
+    print '----------------------------------------'
+    print '         Homework 3 Question 16         '
+    print '----------------------------------------'
+    print 'average Ein of all gtevaluated with 0/1 error):'
+    #其实从训练过程中就可以看出，ein就应该为0
+    total_ein = []
+    for forest in random_forests:
+        for root in forest:
+            predict_Y = [predict(root, r) for r in train_data]
+            N = len(predict_Y)
+            ein = sum([predict_Y[i] != train_data[i][2] for i in range(N)]) * 1.0 / N
+            total_ein.append(ein)
+    print sum(total_ein) / len(total_ein)
+    print '----------------------------------------'
+
+    print '----------------------------------------'
+    print '         Homework 3 Question 17         '
+    print '----------------------------------------'
+    print 'average Ein(Grf)(evaluated with 0/1 error):'
+    #其实从训练过程中就可以看出，ein就应该为0
+    total_ein = []
+    for forest in random_forests:
+        predict_Y = [predict_with_rf(forest, r) for r in train_data]
+        N = len(predict_Y)
+        ein = sum([predict_Y[i] != train_data[i][2] for i in range(N)]) * 1.0 / N
+        total_ein.append(ein)
+    print sum(total_ein) / len(total_ein)
+    print '----------------------------------------'
+
+    print '----------------------------------------'
+    print '         Homework 3 Question 18         '
+    print '----------------------------------------'
+    print 'average Eout(Grf)(evaluated with 0/1 error):'
+    #其实从训练过程中就可以看出，ein就应该为0
+    total_eout = []
+    for forest in random_forests:
+        predict_Y = [predict_with_rf(forest, r) for r in test_data]
+        N = len(predict_Y)
+        eout = sum([predict_Y[i] != test_data[i][2] for i in range(N)]) * 1.0 / N
+        total_eout.append(eout)
+    print sum(total_eout) / len(total_eout)
+    print '----------------------------------------'
 
 def main():
     train_data, test_data = load_data()
@@ -180,8 +282,8 @@ def main():
     all_nodes.append(root)
     print 'start build decision tree, %d train data...' % len(train_data)
     decision_tree(root, train_data)
-    for r in all_nodes:
-        print 'index=%d(l=%d,r=%d,p=%d), para(theta=%.4f,f_i=%d), label=%d' % (r.index, r.lchild, r.rchild, r.parent, r.theta, r.f_i, r.label)
+    #for r in all_nodes:
+        #print 'index=%d(l=%d,r=%d,p=%d), para(theta=%.4f,f_i=%d), label=%d' % (r.index, r.lchild, r.rchild, r.parent, r.theta, r.f_i, r.label)
     print 'finished, there is %d nodes in the tree' % (len(all_nodes))
     print '----------------------------------------'
     print '         Homework 3 Question 13         '
@@ -201,7 +303,6 @@ def main():
     print ein
     print '----------------------------------------'
 
-
     print '----------------------------------------'
     print '         Homework 3 Question 15         '
     print '----------------------------------------'
@@ -212,6 +313,9 @@ def main():
     eout = sum([predict_Y[i] != test_data[i][2] for i in range(N)]) * 1.0 / N
     print eout
     print '----------------------------------------'
+
+    run_rs(train_data, test_data)
+
 
 if __name__ == '__main__':
     main()
