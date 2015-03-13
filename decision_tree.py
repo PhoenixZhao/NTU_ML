@@ -13,6 +13,7 @@ INF = 10000
 LEFT_LABEL = -1
 RIGHT_LABEL = 1
 
+use_pruned_dt = True
 
 train_data_file = '../assignment3/hw3_train.dat'
 test_data_file = '../assignment3/hw3_test.dat'
@@ -171,6 +172,33 @@ def decision_tree(node, train_data):
 
     return node
 
+def pruned_decision_tree(root, train_data):
+    '''
+        使用pruned decision tress，只需要进行一次划分
+        同样使用Gini index计算出最好的参数即可
+    '''
+
+    majority_of_y = lambda d: sign(sum(d))#由大多数y来决定最后的label
+
+    global all_nodes, recursive_depth
+    recursive_depth += 1
+
+    f_i, theta = get_opt_parameters(train_data)
+    root.theta = theta
+    root.f_i = f_i
+
+    lchild, rchild = create_children(root)
+
+    left_part = [t for t in train_data if t[f_i] < theta]
+    right_part = [t for t in train_data if t[f_i] >= theta]
+
+    lchild.label = majority_of_y([y for _, _, y in left_part])
+
+    rchild.label = majority_of_y([y for _, _, y in right_part])
+
+    return root
+
+
 def predict(node, x):
     '''
         predict with decision tree recursively
@@ -191,7 +219,6 @@ def predict_with_rf(forest, x):
     '''
     predict_Y = [predict(root, x) for root in forest]
     return sign(sum(predict_Y))
-
 
 def bootstrapping(train_data):
     '''
@@ -214,7 +241,10 @@ def random_forest(tnum, train_data):
     forest = [Node(r) for r in range(cur_pos, cur_pos+tnum)]#all root nodes of trees
     for root in forest:
         bst_data = bootstrapping(train_data)
-        decision_tree(root, bst_data)
+        if use_pruned_dt:
+            pruned_decision_tree(root, bst_data)
+        else:
+            decision_tree(root, bst_data)
     return forest
 
 def run_rs(train_data, test_data):
@@ -232,48 +262,78 @@ def run_rs(train_data, test_data):
             print '%d round, cost %.fs' % (t+1, (time.time() - rstart_time))
     print 'finish generating %d trees, total nodes=%d, cost %.fmin' % (T*tnum, len(all_nodes), (time.time() - start_time) / 60.0)
 
-    print '----------------------------------------'
-    print '         Homework 3 Question 16         '
-    print '----------------------------------------'
-    print 'average Ein of all gtevaluated with 0/1 error):'
-    #其实从训练过程中就可以看出，ein就应该为0
-    total_ein = []
-    for forest in random_forests:
-        for root in forest:
-            predict_Y = [predict(root, r) for r in train_data]
+    if use_pruned_dt:
+        print '----------------------------------------'
+        print '         Homework 3 Question 19         '
+        print '----------------------------------------'
+        print 'average Ein(Grf) with pruned decision tree(evaluated with 0/1 error):'
+        #其实从训练过程中就可以看出，ein就应该为0
+        total_ein = []
+        for forest in random_forests:
+            predict_Y = [predict_with_rf(forest, r) for r in train_data]
             N = len(predict_Y)
             ein = sum([predict_Y[i] != train_data[i][2] for i in range(N)]) * 1.0 / N
             total_ein.append(ein)
-    print sum(total_ein) / len(total_ein)
-    print '----------------------------------------'
+        print sum(total_ein) / len(total_ein)
+        print '----------------------------------------'
 
-    print '----------------------------------------'
-    print '         Homework 3 Question 17         '
-    print '----------------------------------------'
-    print 'average Ein(Grf)(evaluated with 0/1 error):'
-    #其实从训练过程中就可以看出，ein就应该为0
-    total_ein = []
-    for forest in random_forests:
-        predict_Y = [predict_with_rf(forest, r) for r in train_data]
-        N = len(predict_Y)
-        ein = sum([predict_Y[i] != train_data[i][2] for i in range(N)]) * 1.0 / N
-        total_ein.append(ein)
-    print sum(total_ein) / len(total_ein)
-    print '----------------------------------------'
+        print '----------------------------------------'
+        print '         Homework 3 Question 20         '
+        print '----------------------------------------'
+        print 'average Eout(Grf) with pruned decision tree(evaluated with 0/1 error):'
+        #其实从训练过程中就可以看出，ein就应该为0
+        total_eout = []
+        for forest in random_forests:
+            predict_Y = [predict_with_rf(forest, r) for r in test_data]
+            N = len(predict_Y)
+            eout = sum([predict_Y[i] != test_data[i][2] for i in range(N)]) * 1.0 / N
+            total_eout.append(eout)
+        print sum(total_eout) / len(total_eout)
+        print '----------------------------------------'
 
-    print '----------------------------------------'
-    print '         Homework 3 Question 18         '
-    print '----------------------------------------'
-    print 'average Eout(Grf)(evaluated with 0/1 error):'
-    #其实从训练过程中就可以看出，ein就应该为0
-    total_eout = []
-    for forest in random_forests:
-        predict_Y = [predict_with_rf(forest, r) for r in test_data]
-        N = len(predict_Y)
-        eout = sum([predict_Y[i] != test_data[i][2] for i in range(N)]) * 1.0 / N
-        total_eout.append(eout)
-    print sum(total_eout) / len(total_eout)
-    print '----------------------------------------'
+    else:
+        print '----------------------------------------'
+        print '         Homework 3 Question 16         '
+        print '----------------------------------------'
+        print 'average Ein of all gtevaluated with 0/1 error):'
+        total_ein = []
+        for forest in random_forests:
+            for root in forest:
+                predict_Y = [predict(root, r) for r in train_data]
+                N = len(predict_Y)
+                ein = sum([predict_Y[i] != train_data[i][2] for i in range(N)]) * 1.0 / N
+                total_ein.append(ein)
+        print sum(total_ein) / len(total_ein)
+        print '----------------------------------------'
+
+        print '----------------------------------------'
+        print '         Homework 3 Question 17         '
+        print '----------------------------------------'
+        print 'average Ein(Grf)(evaluated with 0/1 error):'
+        #其实从训练过程中就可以看出，ein就应该为0
+        total_ein = []
+        for forest in random_forests:
+            predict_Y = [predict_with_rf(forest, r) for r in train_data]
+            N = len(predict_Y)
+            ein = sum([predict_Y[i] != train_data[i][2] for i in range(N)]) * 1.0 / N
+            total_ein.append(ein)
+        print sum(total_ein) / len(total_ein)
+        print '----------------------------------------'
+
+        print '----------------------------------------'
+        print '         Homework 3 Question 18         '
+        print '----------------------------------------'
+        print 'average Eout(Grf)(evaluated with 0/1 error):'
+        #其实从训练过程中就可以看出，ein就应该为0
+        total_eout = []
+        for forest in random_forests:
+            predict_Y = [predict_with_rf(forest, r) for r in test_data]
+            N = len(predict_Y)
+            eout = sum([predict_Y[i] != test_data[i][2] for i in range(N)]) * 1.0 / N
+            total_eout.append(eout)
+        print sum(total_eout) / len(total_eout)
+        print '----------------------------------------'
+
 
 def main():
     train_data, test_data = load_data()
